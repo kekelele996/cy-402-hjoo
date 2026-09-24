@@ -28,6 +28,27 @@ func (r *BillingRepository) Create(b *model.Billing) error {
 	return nil
 }
 
+// Transaction 在事务中执行 fn，fn 返回错误时整体回滚。
+func (r *BillingRepository) Transaction(fn func(tx *gorm.DB) error) error {
+	return r.db.Transaction(fn)
+}
+
+// CreateTx 在事务内创建账单。
+func (r *BillingRepository) CreateTx(tx *gorm.DB, b *model.Billing) error {
+	if err := tx.Create(b).Error; err != nil {
+		return fmt.Errorf("create billing in tx: %w", err)
+	}
+	return nil
+}
+
+// UpdateTx 在事务内更新账单。
+func (r *BillingRepository) UpdateTx(tx *gorm.DB, b *model.Billing) error {
+	if err := tx.Save(b).Error; err != nil {
+		return fmt.Errorf("update billing in tx: %w", err)
+	}
+	return nil
+}
+
 // FindByID 按 ID 查询账单。
 func (r *BillingRepository) FindByID(id uint64) (*model.Billing, error) {
 	var b model.Billing

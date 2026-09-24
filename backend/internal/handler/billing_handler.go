@@ -117,6 +117,36 @@ func (h *BillingHandler) Void(c *gin.Context) {
 	OKWithMessage(c, constants.MsgBillingVoided, b)
 }
 
+// GenerateFromTimeEntries 汇总案件未收费工时生成收费单。
+func (h *BillingHandler) GenerateFromTimeEntries(c *gin.Context) {
+	var req dto.BillingGenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, http.StatusBadRequest, constants.CodeBadRequest, "Billing generate: "+err.Error())
+		return
+	}
+	b, entries, err := h.svc.GenerateFromTimeEntries(req.CaseID, req.EntryIDs, req.InvoiceInfo)
+	if err != nil {
+		h.wrapError(c, err, "Billing[case_id="+strconv.FormatUint(req.CaseID, 10)+"] generate from time entries failed")
+		return
+	}
+	OKWithMessage(c, constants.MsgBillingGenerated, gin.H{"billing": b, "time_entries": entries})
+}
+
+// ListTimeEntries 查看账单收费来源工时。
+func (h *BillingHandler) ListTimeEntries(c *gin.Context) {
+	id, err := strconv.ParseUint(c.Param("id"), 10, 64)
+	if err != nil {
+		Fail(c, http.StatusBadRequest, constants.CodeBadRequest, "Billing[id] time entries: invalid id")
+		return
+	}
+	list, err := h.svc.ListTimeEntries(id)
+	if err != nil {
+		h.wrapError(c, err, "Billing time entries failed")
+		return
+	}
+	OK(c, list)
+}
+
 // Summary 本月汇总。
 func (h *BillingHandler) Summary(c *gin.Context) {
 	sum, err := h.svc.Summary()

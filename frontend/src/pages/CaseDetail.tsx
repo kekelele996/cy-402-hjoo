@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Card, Descriptions, Tabs, Button, Select, Space, message, Tag } from 'antd'
+import { Alert, Card, DatePicker, Descriptions, Form, Input, InputNumber, Modal, Popconfirm, Tabs, Button, Select, Space, message, Tag } from 'antd'
 import { getCase, changeCaseStatus, assignLawyer } from '@/api/case'
 import { getClient } from '@/api/client'
+import { createTimeEntry, deleteTimeEntry, generateBillingFromTimeEntries } from '@/api/timeEntry'
 import DocumentList from '@/components/common/DocumentList'
 import BillingCard from '@/components/common/BillingCard'
 import StatusBadge from '@/components/common/StatusBadge'
 import PermissionGuard from '@/components/common/PermissionGuard'
 import TimelineItem from '@/components/common/TimelineItem'
+import TimeEntryTable from '@/components/common/TimeEntryTable'
 import { useDocumentStore } from '@/stores/documentStore'
 import { useBillingStore } from '@/stores/billingStore'
+import { useTimeEntryStore } from '@/stores/timeEntryStore'
 import { useUserStore } from '@/stores/userStore'
 import { CaseStatusOptions, CaseTypeOptions } from '@/constants/case'
+import { formatAmount } from '@/utils/amountFormatter'
 import type { CaseItem, Client } from '@/types'
 
 export default function CaseDetail() {
@@ -21,8 +25,11 @@ export default function CaseDetail() {
   const [client, setClient] = useState<Client | null>(null)
   const [status, setStatus] = useState('')
   const [lawyer, setLawyer] = useState<number>()
+  const [entryOpen, setEntryOpen] = useState(false)
+  const [entryForm] = Form.useForm()
   const docStore = useDocumentStore()
   const billingStore = useBillingStore()
+  const timeEntryStore = useTimeEntryStore()
   const userStore = useUserStore()
 
   useEffect(() => {
@@ -41,6 +48,12 @@ export default function CaseDetail() {
     }
     docStore.fetchByCase(caseId)
     billingStore.fetchByCase(caseId)
+    refreshTimeEntries()
+  }
+
+  function refreshTimeEntries() {
+    timeEntryStore.fetchByCase(caseId)
+    timeEntryStore.fetchUnbilledSummary(caseId)
   }
 
   async function onStatusChange() {
@@ -56,7 +69,36 @@ export default function CaseDetail() {
     load()
   }
 
+  async function onCreateEntry() {
+    const values = await entryForm.validateFields()
+    await createTimeEntry(caseId, {
+      work_date: values.work_date.format('YYYY-MM-DD'),
+      hours: values.hours,
+      hourly_rate: values.hourly_rate ?? 0,
+      description: values.description,
+    })
+    message.success('工时记录成功')
+    setEntryOpen(false)
+    entryForm.resetFields()
+    refreshTimeEntries()
+  }
+
+  async function onDeleteEntry(entryId: number) {
+    await deleteTimeEntry(entryId)
+    message.success('工时已删除')
+    refreshTimeEntries()
+  }
+
+  async function onGenerateBilling() {
+    await generateBillingFromTimeEntries({ case_id: caseId })
+    message.success('收费单已生成')
+    refreshTimeEntries()
+    billingStore.fetchByCase(caseId)
+  }
+
   if (!item) return null
+
+  const unbilled = timeEntryStore.unbilled
 
   return (
     <Card>
@@ -118,6 +160,32 @@ export default function CaseDetail() {
             children: <DocumentList documents={docStore.byCase} />,
           },
           {
+            key: 'time_entries',
+            label: '工时',
+            children: (
+              <>
+                <Alert
+                  style={{ marginBottom: 16 }}
+                  type={unbilled.count > 0 ? 'warning' : 'info'}
+                  message={`待收费时长 ${Number(unbilled.hours)} 小时，预计金额 ${formatAmount(unbilled.amount)}（共 ${unbilled.count} 项未结算工时）`}
+                />
+                <PermissionGuard roles={['admin', 'lawyer']}>
+                  <Space style={{ marginBottom: 16 }}>
+                    <Button type="primary" onClick={() => setEntryOpen(true)}>登记工时</Button>
+                    <Popconfirm
+                      title={`将 ${unbilled.count} 项待结算工时（${formatAmount(unbilled.amount)}）生成收费单？`}
+                      onConfirm={onGenerateBilling}
+                      disabled={unbilled.count === 0}
+                    >
+                      <Button disabled={unbilled.count === 0}>生成收费单</Button>
+                    </Popconfirm>
+                  </Space>
+                </PermissionGuard>
+                <TimeEntryTable entries={timeEntryStore.byCase} onDelete={onDeleteEntry} />
+              </>
+            ),
+          },
+          {
             key: 'billings',
             label: '账单',
             children: billingStore.byCase.map((b) => <BillingCard key={b.id} item={b} />),
@@ -137,6 +205,22 @@ export default function CaseDetail() {
           },
         ]}
       />
+      <Modal title="登记工时" open={entryOpen} onOk={onCreateEntry} onCancel={() => setEntryOpen(false)} destroyOnClose>
+        <Form form={entryForm} layout="vertical">
+          <Form.Item name="work_date" label="工作日期" rules={[{ required: true, message: '请选择工作日期' }]}>
+            <DatePicker style={{ width: '100%' }} />
+          </Form.Item>
+          <Form.Item name="hours" label="时长（小时）" rules={[{ required: true, message: '请输入时长' }]}>
+            <InputNumber style={{ width: '100%' }} min={0.5} max={24} step={0.5} precision={2} />
+          </Form.Item>
+          <Form.Item name="hourly_rate" label="当时费率（元/小时）" rules={[{ required: true, message: '请输入费率' }]}>
+            <InputNumber style={{ width: '100%' }} min={0} precision={2} />
+          </Form.Item>
+          <Form.Item name="description" label="工作内容" rules={[{ required: true, message: '请输入工作内容' }]}>
+            <Input.TextArea rows={3} maxLength={500} showCount />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Card>
   )
 }

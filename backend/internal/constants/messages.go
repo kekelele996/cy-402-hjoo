@@ -23,4 +23,7 @@ const (
 	MsgBillingPaid           = "账单已标记支付"
 	MsgBillingInvoiced       = "账单已开票"
 	MsgBillingVoided         = "账单已作废"
+	MsgBillingGenerated      = "收费单已生成"
+	MsgTimeEntryCreated      = "工时记录成功"
+	MsgTimeEntryDeleted      = "工时已删除"
 )

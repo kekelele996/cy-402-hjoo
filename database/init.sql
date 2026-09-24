@@ -64,6 +64,21 @@ CREATE TABLE IF NOT EXISTS billings (
 );
 ALTER TABLE billings ADD CONSTRAINT uni_billings_bill_no UNIQUE (bill_no);
 
+CREATE TABLE IF NOT EXISTS time_entries (
+  id BIGSERIAL PRIMARY KEY,
+  case_id BIGINT NOT NULL,
+  lawyer_id BIGINT NOT NULL,
+  work_date DATE NOT NULL,
+  hours NUMERIC(8,2) NOT NULL,
+  description VARCHAR(500) NOT NULL,
+  hourly_rate NUMERIC(12,2) NOT NULL DEFAULT 0,
+  billing_id BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_time_entries_case_id ON time_entries (case_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_lawyer_id ON time_entries (lawyer_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_billing_id ON time_entries (billing_id);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGSERIAL PRIMARY KEY,
   operator_id BIGINT NOT NULL DEFAULT 0,
@@ -101,6 +116,13 @@ INSERT INTO billings (id, bill_no, billing_type, amount, status, case_id, client
 (2, 'BILL2026080002', 'court_fee', 5000.00, 'pending', 1, 1, '', NOW()),
 (3, 'BILL2026080003', 'attorney_fee', 15000.00, 'invoiced', 2, 2, '已开票 15000 元', NOW());
 
+-- 工时种子数据：hourly_rate 为登记时费率快照（第 3 条费率已调整，旧工时不受影响）
+INSERT INTO time_entries (id, case_id, lawyer_id, work_date, hours, description, hourly_rate, billing_id, created_at) VALUES
+(1, 1, 2, CURRENT_DATE - INTERVAL '10 days', 3.5, '审阅买卖合同及往来邮件，梳理违约事实', 1500.00, NULL, NOW()),
+(2, 1, 2, CURRENT_DATE - INTERVAL '7 days', 2.0, '与客户沟通补充证据清单', 1500.00, NULL, NOW()),
+(3, 1, 2, CURRENT_DATE - INTERVAL '3 days', 4.0, '起草律师函并定稿发送', 1800.00, NULL, NOW()),
+(4, 2, 2, CURRENT_DATE - INTERVAL '5 days', 1.5, '借贷凭证整理与利息核算', 1200.00, NULL, NOW());
+
 INSERT INTO audit_logs (id, operator_id, operator_name, action, entity_type, entity_id, detail, ip, created_at) VALUES
 (1, 1, 'admin', 'seed', 'system', '', 'init', '127.0.0.1', NOW());
 
@@ -110,4 +132,5 @@ SELECT setval(pg_get_serial_sequence('clients', 'id'), (SELECT COALESCE(MAX(id),
 SELECT setval(pg_get_serial_sequence('cases', 'id'), (SELECT COALESCE(MAX(id), 1) FROM cases));
 SELECT setval(pg_get_serial_sequence('documents', 'id'), (SELECT COALESCE(MAX(id), 1) FROM documents));
 SELECT setval(pg_get_serial_sequence('billings', 'id'), (SELECT COALESCE(MAX(id), 1) FROM billings));
+SELECT setval(pg_get_serial_sequence('time_entries', 'id'), (SELECT COALESCE(MAX(id), 1) FROM time_entries));
 SELECT setval(pg_get_serial_sequence('audit_logs', 'id'), (SELECT COALESCE(MAX(id), 1) FROM audit_logs));

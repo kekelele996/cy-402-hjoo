@@ -3,11 +3,31 @@ import { Button, Card, Form, Input, InputNumber, message, Modal, Select, Space, 
 import { PlusOutlined } from '@ant-design/icons'
 import AmountSummary from '@/components/common/AmountSummary'
 import StatusBadge from '@/components/common/StatusBadge'
+import TimeEntryTable from '@/components/common/TimeEntryTable'
 import { useBillingStore } from '@/stores/billingStore'
 import { createBilling, markPaid, markInvoiced, voidBilling } from '@/api/billing'
+import { listBillingTimeEntries } from '@/api/timeEntry'
 import { BillingStatusOptions, BillingTypeOptions, BillingTypeText } from '@/constants/billing'
 import { formatAmount } from '@/utils/amountFormatter'
-import type { Billing } from '@/types'
+import type { Billing, TimeEntry } from '@/types'
+
+// 账单收费来源：展开行时按需加载该账单关联的工时。
+function BillingTimeEntries({ billingId }: { billingId: number }) {
+  const [entries, setEntries] = useState<TimeEntry[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    listBillingTimeEntries(billingId)
+      .then((res: any) => setEntries(res.data || []))
+      .catch(() => setEntries([]))
+      .finally(() => setLoading(false))
+  }, [billingId])
+
+  if (!loading && entries.length === 0) {
+    return <span style={{ color: '#999' }}>该账单为手工创建，无关联工时</span>
+  }
+  return <TimeEntryTable entries={entries} loading={loading} showStatus={false} />
+}
 
 export default function Billing() {
   const store = useBillingStore()
@@ -43,6 +63,7 @@ export default function Billing() {
         rowKey="id"
         dataSource={store.list}
         pagination={{ current: page, pageSize, total: store.total, onChange: (p, ps) => { setPage(p); setPageSize(ps) } }}
+        expandable={{ expandedRowRender: (row) => <BillingTimeEntries billingId={row.id} /> }}
         columns={[
           { title: '单号', dataIndex: 'bill_no' },
           { title: '类型', dataIndex: 'billing_type', render: (v) => BillingTypeText[v] || v },

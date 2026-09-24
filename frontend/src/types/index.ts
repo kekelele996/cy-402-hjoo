@@ -58,6 +58,24 @@ export interface Billing {
   created_at: string
 }
 
+export interface TimeEntry {
+  id: number
+  case_id: number
+  lawyer_id: number
+  work_date: string
+  hours: number | string
+  description: string
+  hourly_rate: number | string
+  billing_id: number | null
+  created_at: string
+}
+
+export interface UnbilledSummary {
+  hours: number
+  amount: number
+  count: number
+}
+
 export interface AuditLog {
   id: number
   operator_id: number
