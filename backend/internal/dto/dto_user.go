@@ -25,9 +25,10 @@ type LoginResponse struct {
 
 // UpdateProfileRequest 修改资料请求。
 type UpdateProfileRequest struct {
-	RealName  string `json:"real_name" binding:"max=50"`
-	Avatar    string `json:"avatar" binding:"max=255"`
-	Email     string `json:"email" binding:"omitempty,email,max=100"`
-	Phone     string `json:"phone" binding:"max=20"`
-	LicenseNo string `json:"license_no" binding:"max=50"`
+	RealName   string   `json:"real_name" binding:"max=50"`
+	Avatar     string   `json:"avatar" binding:"max=255"`
+	Email      string   `json:"email" binding:"omitempty,email,max=100"`
+	Phone      string   `json:"phone" binding:"max=20"`
+	LicenseNo  string   `json:"license_no" binding:"max=50"`
+	HourlyRate *float64 `json:"hourly_rate" binding:"omitempty,min=0"`
 }

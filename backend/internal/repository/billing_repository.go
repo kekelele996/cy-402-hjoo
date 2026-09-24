@@ -8,6 +8,7 @@ import (
 	"cylawcase/internal/model"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // BillingRepository 账单仓储。
@@ -76,6 +77,34 @@ func (r *BillingRepository) ListByCase(caseID uint64) ([]model.Billing, error) {
 func (r *BillingRepository) Update(b *model.Billing) error {
 	if err := r.db.Save(b).Error; err != nil {
 		return fmt.Errorf("update billing: %w", err)
+	}
+	return nil
+}
+
+// CreateTx 在给定事务内创建账单（生成收费单时与工时挂载同事务提交）。
+func (r *BillingRepository) CreateTx(tx *gorm.DB, b *model.Billing) error {
+	if err := tx.Create(b).Error; err != nil {
+		return fmt.Errorf("create billing in tx: %w", err)
+	}
+	return nil
+}
+
+// FindByIDTx 在给定事务内按 ID 查询账单并锁定行。
+func (r *BillingRepository) FindByIDTx(tx *gorm.DB, id uint64) (*model.Billing, error) {
+	var b model.Billing
+	if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&b, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, fmt.Errorf("find billing by id in tx: %w", err)
+	}
+	return &b, nil
+}
+
+// UpdateTx 在给定事务内更新账单。
+func (r *BillingRepository) UpdateTx(tx *gorm.DB, b *model.Billing) error {
+	if err := tx.Save(b).Error; err != nil {
+		return fmt.Errorf("update billing in tx: %w", err)
 	}
 	return nil
 }

@@ -1,17 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { Card, Descriptions, Tabs, Button, Select, Space, message, Tag } from 'antd'
+import { Card, Descriptions, Tabs, Button, Select, Space, message, Tag, Statistic, Row, Col, Popconfirm } from 'antd'
+import { FileDoneOutlined } from '@ant-design/icons'
 import { getCase, changeCaseStatus, assignLawyer } from '@/api/case'
 import { getClient } from '@/api/client'
+import { generateInvoiceFromTime } from '@/api/billing'
 import DocumentList from '@/components/common/DocumentList'
 import BillingCard from '@/components/common/BillingCard'
 import StatusBadge from '@/components/common/StatusBadge'
 import PermissionGuard from '@/components/common/PermissionGuard'
 import TimelineItem from '@/components/common/TimelineItem'
+import TimeEntryList from '@/components/common/TimeEntryList'
 import { useDocumentStore } from '@/stores/documentStore'
 import { useBillingStore } from '@/stores/billingStore'
 import { useUserStore } from '@/stores/userStore'
+import { useTimeEntryStore } from '@/stores/timeEntryStore'
 import { CaseStatusOptions, CaseTypeOptions } from '@/constants/case'
+import { formatAmount, formatAmountPlain } from '@/utils/amountFormatter'
+import { formatDuration } from '@/utils/durationFormat'
 import type { CaseItem, Client } from '@/types'
 
 export default function CaseDetail() {
@@ -24,6 +30,7 @@ export default function CaseDetail() {
   const docStore = useDocumentStore()
   const billingStore = useBillingStore()
   const userStore = useUserStore()
+  const timeStore = useTimeEntryStore()
 
   useEffect(() => {
     userStore.fetchLawyers()
@@ -41,6 +48,8 @@ export default function CaseDetail() {
     }
     docStore.fetchByCase(caseId)
     billingStore.fetchByCase(caseId)
+    timeStore.fetchByCase(caseId)
+    timeStore.fetchSummary(caseId)
   }
 
   async function onStatusChange() {
@@ -56,6 +65,12 @@ export default function CaseDetail() {
     load()
   }
 
+  async function onGenerateInvoice() {
+    const res: any = await generateInvoiceFromTime(caseId)
+    message.success(`收费单 ${res.data.bill_no} 已生成，金额 ${formatAmount(res.data.amount)}`)
+    load()
+  }
+
   if (!item) return null
 
   return (
@@ -65,6 +80,41 @@ export default function CaseDetail() {
         <StatusBadge status={item.status} />
         <Tag>{CaseTypeOptions.find((o) => o.value === item.case_type)?.label || item.case_type}</Tag>
       </Space>
+
+      {/* 待收费工时汇总：待收费时长 + 预计金额，可一键汇总生成收费单 */}
+      <Card size="small" style={{ marginBottom: 16 }}>
+        <Row gutter={16} align="middle">
+          <Col span={6}>
+            <Statistic title="待收费时长" value={formatDuration(timeStore.summary.unbilled_minutes)} />
+          </Col>
+          <Col span={6}>
+            <Statistic
+              title="预计金额"
+              value={formatAmountPlain(timeStore.summary.estimated_amount)}
+              prefix="¥"
+              valueStyle={{ color: '#cf1322' }}
+            />
+          </Col>
+          <Col span={12} style={{ textAlign: 'right' }}>
+            <PermissionGuard roles={['admin', 'lawyer']}>
+              <Popconfirm
+                title="将该案件全部待收费工时汇总生成一张收费单？"
+                disabled={timeStore.summary.unbilled_minutes === 0}
+                onConfirm={onGenerateInvoice}
+              >
+                <Button
+                  type="primary"
+                  icon={<FileDoneOutlined />}
+                  disabled={timeStore.summary.unbilled_minutes === 0}
+                >
+                  汇总待收费工时生成收费单
+                </Button>
+              </Popconfirm>
+            </PermissionGuard>
+          </Col>
+        </Row>
+      </Card>
+
       <Tabs
         items={[
           {
@@ -113,13 +163,18 @@ export default function CaseDetail() {
             ) : null,
           },
           {
+            key: 'time',
+            label: `工时（${timeStore.byCase.length}）`,
+            children: <TimeEntryList caseId={caseId} />,
+          },
+          {
             key: 'docs',
             label: '文档',
             children: <DocumentList documents={docStore.byCase} />,
           },
           {
             key: 'billings',
-            label: '账单',
+            label: `账单（${billingStore.byCase.length}）`,
             children: billingStore.byCase.map((b) => <BillingCard key={b.id} item={b} />),
           },
           {

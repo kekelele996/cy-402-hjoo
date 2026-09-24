@@ -7,6 +7,7 @@ export interface User {
   email: string
   phone: string
   avatar: string
+  hourly_rate: number | string
   created_at: string
 }
 
@@ -55,7 +56,29 @@ export interface Billing {
   case_id: number
   client_id: number
   invoice_info: string
+  source: string
   created_at: string
+}
+
+// TimeEntry 工时记录，hourly_rate 为登记时的费率快照。
+export interface TimeEntry {
+  id: number
+  case_id: number
+  lawyer_id: number
+  work_date: string
+  duration_min: number
+  description: string
+  hourly_rate: number | string
+  billing_id: number | null
+  created_at: string
+}
+
+// TimeSummary 案件待收费工时汇总。
+export interface TimeSummary {
+  case_id: number
+  unbilled_minutes: number
+  unbilled_hours: number
+  estimated_amount: number
 }
 
 export interface AuditLog {

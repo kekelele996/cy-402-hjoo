@@ -3,9 +3,10 @@ import { Button, Card, Form, Input, InputNumber, message, Modal, Select, Space, 
 import { PlusOutlined } from '@ant-design/icons'
 import AmountSummary from '@/components/common/AmountSummary'
 import StatusBadge from '@/components/common/StatusBadge'
+import BillingSources from '@/components/common/BillingSources'
 import { useBillingStore } from '@/stores/billingStore'
 import { createBilling, markPaid, markInvoiced, voidBilling } from '@/api/billing'
-import { BillingStatusOptions, BillingTypeOptions, BillingTypeText } from '@/constants/billing'
+import { BillingStatusOptions, BillingTypeOptions, BillingTypeText, BillingSource, BillingSourceText } from '@/constants/billing'
 import { formatAmount } from '@/utils/amountFormatter'
 import type { Billing } from '@/types'
 
@@ -30,6 +31,13 @@ export default function Billing() {
     setOpen(false)
     form.resetFields()
     setPage(1)
+    store.fetchList({ page: 1, page_size: pageSize, ...filters })
+    store.fetchSummary()
+  }
+
+  function refresh() {
+    store.fetchList({ page, page_size: pageSize, ...filters })
+    store.fetchSummary()
   }
 
   return (
@@ -43,9 +51,25 @@ export default function Billing() {
         rowKey="id"
         dataSource={store.list}
         pagination={{ current: page, pageSize, total: store.total, onChange: (p, ps) => { setPage(p); setPageSize(ps) } }}
+        expandable={{
+          // 工时汇总生成的收费单可展开查看收费来源；手工账单也可展开（显示空态提示）。
+          expandedRowRender: (row) => <BillingSources billingId={row.id} />,
+          rowExpandable: () => true,
+        }}
         columns={[
           { title: '单号', dataIndex: 'bill_no' },
           { title: '类型', dataIndex: 'billing_type', render: (v) => BillingTypeText[v] || v },
+          {
+            title: '来源',
+            dataIndex: 'source',
+            width: 100,
+            render: (v: string) =>
+              v === BillingSource.TIME_ENTRIES ? (
+                <Tag color="geekblue">{BillingSourceText[BillingSource.TIME_ENTRIES]}</Tag>
+              ) : (
+                <Tag>{BillingSourceText.manual}</Tag>
+              ),
+          },
           { title: '金额', dataIndex: 'amount', render: (v) => formatAmount(v) },
           { title: '状态', dataIndex: 'status', render: (v) => <StatusBadge status={v} kind="billing" /> },
           { title: '案件ID', dataIndex: 'case_id' },
@@ -54,9 +78,9 @@ export default function Billing() {
             title: '操作',
             render: (_, row) => (
               <Space>
-                {row.status === 'pending' && <Button size="small" type="primary" onClick={async () => { await markPaid(row.id); message.success('已标记支付'); store.fetchList({ page, page_size: pageSize, ...filters }); store.fetchSummary() }}>标记支付</Button>}
-                {row.status === 'paid' && <Button size="small" onClick={async () => { await markInvoiced(row.id); message.success('已开票'); store.fetchList({ page, page_size: pageSize, ...filters }); store.fetchSummary() }}>开票</Button>}
-                {row.status !== 'void' && <Button size="small" danger onClick={async () => { await voidBilling(row.id); message.success('已作废'); store.fetchList({ page, page_size: pageSize, ...filters }); store.fetchSummary() }}>作废</Button>}
+                {row.status === 'pending' && <Button size="small" type="primary" onClick={async () => { await markPaid(row.id); message.success('已标记支付'); refresh() }}>标记支付</Button>}
+                {row.status === 'paid' && <Button size="small" onClick={async () => { await markInvoiced(row.id); message.success('已开票'); refresh() }}>开票</Button>}
+                {row.status !== 'void' && <Button size="small" danger onClick={async () => { await voidBilling(row.id); message.success(row.source === BillingSource.TIME_ENTRIES ? '已作废，工时已退回待收费列表' : '已作废'); refresh() }}>作废</Button>}
               </Space>
             ),
           },

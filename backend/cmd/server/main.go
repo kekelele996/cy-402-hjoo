@@ -32,7 +32,7 @@ func main() {
 		os.Exit(1)
 	}
 	if err := db.AutoMigrate(
-		&model.User{}, &model.Client{}, &model.Case{}, &model.Document{}, &model.Billing{}, &model.AuditLog{},
+		&model.User{}, &model.Client{}, &model.Case{}, &model.Document{}, &model.Billing{}, &model.TimeEntry{}, &model.AuditLog{},
 	); err != nil {
 		logger.Error("auto migrate failed", "error", err.Error())
 		os.Exit(1)
@@ -47,23 +47,26 @@ func main() {
 	caseRepo := repository.NewCaseRepository(db)
 	documentRepo := repository.NewDocumentRepository(db)
 	billingRepo := repository.NewBillingRepository(db)
+	timeEntryRepo := repository.NewTimeEntryRepository(db)
 
 	userSvc := service.NewUserService(userRepo, logger)
 	clientSvc := service.NewClientService(clientRepo, caseRepo, logger)
 	caseSvc := service.NewCaseService(caseRepo, clientRepo, userRepo, logger)
 	documentSvc := service.NewDocumentService(documentRepo, caseRepo, logger)
-	billingSvc := service.NewBillingService(billingRepo, caseRepo, clientRepo, logger)
+	billingSvc := service.NewBillingService(billingRepo, caseRepo, clientRepo, timeEntryRepo, logger)
+	timeEntrySvc := service.NewTimeEntryService(timeEntryRepo, caseRepo, userRepo, logger)
 
 	userHandler := handler.NewUserHandler(userSvc, logger)
 	clientHandler := handler.NewClientHandler(clientSvc, logger)
 	caseHandler := handler.NewCaseHandler(caseSvc, logger)
 	documentHandler := handler.NewDocumentHandler(documentSvc, logger)
 	billingHandler := handler.NewBillingHandler(billingSvc, logger)
+	timeEntryHandler := handler.NewTimeEntryHandler(timeEntrySvc, logger)
 	uploadHandler := handler.NewUploadHandler(cfg, logger)
 	auditLogHandler := handler.NewAuditLogHandler(db, logger)
 
 	r := router.New(cfg, db, logger, userHandler, clientHandler, caseHandler,
-		documentHandler, billingHandler, uploadHandler, auditLogHandler)
+		documentHandler, billingHandler, timeEntryHandler, uploadHandler, auditLogHandler)
 
 	srv := &http.Server{
 		Addr:    ":" + cfg.ServerPort,

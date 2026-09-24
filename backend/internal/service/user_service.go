@@ -85,8 +85,8 @@ func (s *UserService) GetByID(id uint64) (*model.User, error) {
 	return u, nil
 }
 
-// UpdateProfile 修改个人资料。
-func (s *UserService) UpdateProfile(id uint64, realName, avatar, email, phone, licenseNo string) (*model.User, error) {
+// UpdateProfile 修改个人资料。hourlyRate 为指针，nil 表示不修改费率，非 nil 则更新当前费率。
+func (s *UserService) UpdateProfile(id uint64, realName, avatar, email, phone, licenseNo string, hourlyRate *float64) (*model.User, error) {
 	u, err := s.repo.FindByID(id)
 	if err != nil {
 		return nil, util.Wrap(err, "User[id=%d] update profile find failed", id)
@@ -106,10 +106,16 @@ func (s *UserService) UpdateProfile(id uint64, realName, avatar, email, phone, l
 	if licenseNo != "" {
 		u.LicenseNo = licenseNo
 	}
+	if hourlyRate != nil {
+		if *hourlyRate < 0 {
+			return nil, util.NewAppError(constants.CodeValidationFailed, "User[id="+u64(id)+"] update profile: hourly_rate must be >= 0")
+		}
+		u.HourlyRate = *hourlyRate
+	}
 	if err := s.repo.Update(u); err != nil {
 		return nil, util.Wrap(err, "User[id=%d] update profile save failed", id)
 	}
-	s.logger.Info(constants.LogUserProfileUpdate, "user_id", u.ID)
+	s.logger.Info(constants.LogUserProfileUpdate, "user_id", u.ID, "hourly_rate", u.HourlyRate)
 	return u, nil
 }
 

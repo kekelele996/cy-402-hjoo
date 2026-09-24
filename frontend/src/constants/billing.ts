@@ -29,3 +29,14 @@ export const BillingStatusText: Record<string, string> = {
 
 export const BillingTypeOptions = Object.entries(BillingTypeText).map(([value, label]) => ({ label, value }))
 export const BillingStatusOptions = Object.entries(BillingStatusText).map(([value, label]) => ({ label, value }))
+
+// 账单来源（与后端 backend/internal/constants/billing.go 保持一致）
+export const BillingSource = {
+  MANUAL: 'manual',
+  TIME_ENTRIES: 'time_entries',
+} as const
+
+export const BillingSourceText: Record<string, string> = {
+  [BillingSource.MANUAL]: '手工录入',
+  [BillingSource.TIME_ENTRIES]: '工时汇总',
+}

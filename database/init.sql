@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(100) NOT NULL DEFAULT '',
   phone VARCHAR(20) NOT NULL DEFAULT '',
   avatar VARCHAR(255) NOT NULL DEFAULT '',
+  hourly_rate NUMERIC(12,2) NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE users ADD CONSTRAINT uni_users_username UNIQUE (username);
@@ -60,9 +61,29 @@ CREATE TABLE IF NOT EXISTS billings (
   case_id BIGINT NOT NULL,
   client_id BIGINT NOT NULL,
   invoice_info VARCHAR(255) NOT NULL DEFAULT '',
+  source VARCHAR(30) NOT NULL DEFAULT 'manual',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE billings ADD CONSTRAINT uni_billings_bill_no UNIQUE (bill_no);
+CREATE INDEX IF NOT EXISTS idx_billings_source ON billings(source);
+
+-- 工时记录：hourly_rate 为登记时的费率快照，律师费率后续调整不影响旧工时；
+-- billing_id 为空表示待结算，非空表示已归入对应收费单，收费单作废时置空。
+CREATE TABLE IF NOT EXISTS time_entries (
+  id BIGSERIAL PRIMARY KEY,
+  case_id BIGINT NOT NULL,
+  lawyer_id BIGINT NOT NULL,
+  work_date DATE NOT NULL,
+  duration_min INTEGER NOT NULL DEFAULT 0,
+  description TEXT NOT NULL DEFAULT '',
+  hourly_rate NUMERIC(12,2) NOT NULL DEFAULT 0,
+  billing_id BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_time_entries_case_id ON time_entries(case_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_lawyer_id ON time_entries(lawyer_id);
+CREATE INDEX IF NOT EXISTS idx_time_entries_work_date ON time_entries(work_date);
+CREATE INDEX IF NOT EXISTS idx_time_entries_billing_id ON time_entries(billing_id);
 
 CREATE TABLE IF NOT EXISTS audit_logs (
   id BIGSERIAL PRIMARY KEY,
@@ -77,10 +98,10 @@ CREATE TABLE IF NOT EXISTS audit_logs (
 );
 
 -- 预置种子数据（密码：admin/Admin@123，lawyer 与 assistant/User@123）
-INSERT INTO users (id, username, password_hash, real_name, role, license_no, email, phone, avatar, created_at) VALUES
-(1, 'admin', '$2a$10$bFfMuQAuKWflKxpuDYdFpeGJPVgD83q/.278LHYLL5S0DDmEfChX2', '系统管理员', 'admin', '', 'admin@cylawcase.dev', '13800000001', '', NOW()),
-(2, 'lawyer', '$2a$10$TMTpnDbEwRbtcbF9VJxAxe5IswQjmo7pboKI9zVtU.BYnhzdJpX9a', '张律师', 'lawyer', 'LAW1101010001', 'lawyer@cylawcase.dev', '13800000002', '', NOW()),
-(3, 'assistant', '$2a$10$TMTpnDbEwRbtcbF9VJxAxe5IswQjmo7pboKI9zVtU.BYnhzdJpX9a', '李助理', 'assistant', '', 'assistant@cylawcase.dev', '13800000003', '', NOW());
+INSERT INTO users (id, username, password_hash, real_name, role, license_no, email, phone, avatar, hourly_rate, created_at) VALUES
+(1, 'admin', '$2a$10$bFfMuQAuKWflKxpuDYdFpeGJPVgD83q/.278LHYLL5S0DDmEfChX2', '系统管理员', 'admin', '', 'admin@cylawcase.dev', '13800000001', '', 0, NOW()),
+(2, 'lawyer', '$2a$10$TMTpnDbEwRbtcbF9VJxAxe5IswQjmo7pboKI9zVtU.BYnhzdJpX9a', '张律师', 'lawyer', 'LAW1101010001', 'lawyer@cylawcase.dev', '13800000002', '', 600.00, NOW()),
+(3, 'assistant', '$2a$10$TMTpnDbEwRbtcbF9VJxAxe5IswQjmo7pboKI9zVtU.BYnhzdJpX9a', '李助理', 'assistant', '', 'assistant@cylawcase.dev', '13800000003', '', 300.00, NOW());
 
 INSERT INTO clients (id, name, id_number, contact, address, remark, created_at) VALUES
 (1, '深圳华信科技有限公司', '91440300MA5XXXXX1', '王经理 13900000001', '深圳市南山区科技园', '重点客户', NOW()),
@@ -96,10 +117,21 @@ INSERT INTO documents (id, title, file_type, file_url, upload_time, case_id, upl
 (2, '买卖合同证据清单', 'evidence', '/uploads/case1_evidence.pdf', NOW(), 1, 2, NOW()),
 (3, '一审判决书', 'judgment', '/uploads/case3_judgment.pdf', NOW(), 3, 2, NOW());
 
-INSERT INTO billings (id, bill_no, billing_type, amount, status, case_id, client_id, invoice_info, created_at) VALUES
-(1, 'BILL2026080001', 'attorney_fee', 30000.00, 'paid', 1, 1, '已开票 30000 元', NOW()),
-(2, 'BILL2026080002', 'court_fee', 5000.00, 'pending', 1, 1, '', NOW()),
-(3, 'BILL2026080003', 'attorney_fee', 15000.00, 'invoiced', 2, 2, '已开票 15000 元', NOW());
+INSERT INTO billings (id, bill_no, billing_type, amount, status, case_id, client_id, invoice_info, source, created_at) VALUES
+(1, 'BILL2026080001', 'attorney_fee', 30000.00, 'paid', 1, 1, '已开票 30000 元', 'manual', NOW()),
+(2, 'BILL2026080002', 'court_fee', 5000.00, 'pending', 1, 1, '', 'manual', NOW()),
+(3, 'BILL2026090001', 'attorney_fee', 7200.00, 'pending', 2, 2, '', 'time_entries', NOW());
+
+-- 工时：案件 2 已有 12 小时（600 元/小时）汇总进收费单 3；案件 1 有 3 条待结算工时，
+-- 案件 2 还留有 90 分钟未收费工时（预计金额按各自快照费率计算）。
+INSERT INTO time_entries (id, case_id, lawyer_id, work_date, duration_min, description, hourly_rate, billing_id, created_at) VALUES
+(1, 2, 2, CURRENT_DATE - INTERVAL '10 days', 300, '案件材料梳理与法律检索', 600.00, 3, NOW()),
+(2, 2, 2, CURRENT_DATE - INTERVAL '8 days', 240, '起草答辩状并与客户沟通', 600.00, 3, NOW()),
+(3, 2, 2, CURRENT_DATE - INTERVAL '6 days', 180, '参加庭前会议', 600.00, 3, NOW()),
+(4, 1, 2, CURRENT_DATE - INTERVAL '5 days', 120, '审查买卖合同及送货单', 600.00, NULL, NOW()),
+(5, 1, 2, CURRENT_DATE - INTERVAL '3 days', 90, '与对方律师电话谈判', 600.00, NULL, NOW()),
+(6, 1, 3, CURRENT_DATE - INTERVAL '2 days', 60, '整理证据目录并扫描归档', 300.00, NULL, NOW()),
+(7, 2, 2, CURRENT_DATE - INTERVAL '1 day', 90, '补充调查取证笔录', 600.00, NULL, NOW());
 
 INSERT INTO audit_logs (id, operator_id, operator_name, action, entity_type, entity_id, detail, ip, created_at) VALUES
 (1, 1, 'admin', 'seed', 'system', '', 'init', '127.0.0.1', NOW());
@@ -110,4 +142,5 @@ SELECT setval(pg_get_serial_sequence('clients', 'id'), (SELECT COALESCE(MAX(id),
 SELECT setval(pg_get_serial_sequence('cases', 'id'), (SELECT COALESCE(MAX(id), 1) FROM cases));
 SELECT setval(pg_get_serial_sequence('documents', 'id'), (SELECT COALESCE(MAX(id), 1) FROM documents));
 SELECT setval(pg_get_serial_sequence('billings', 'id'), (SELECT COALESCE(MAX(id), 1) FROM billings));
+SELECT setval(pg_get_serial_sequence('time_entries', 'id'), (SELECT COALESCE(MAX(id), 1) FROM time_entries));
 SELECT setval(pg_get_serial_sequence('audit_logs', 'id'), (SELECT COALESCE(MAX(id), 1) FROM audit_logs));

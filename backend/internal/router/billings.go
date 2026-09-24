@@ -14,6 +14,7 @@ func (r *Router) registerBillingRoutes(g *gin.RouterGroup) {
 	billings.GET("/summary", r.billing.Summary)
 	billings.GET("/by-case/:id", r.billing.ListByCase)
 	billings.POST("", r.billing.Create)
+	billings.POST("/invoice-from-time", r.billing.GenerateInvoice)
 	billings.POST("/:id/paid", r.billing.MarkPaid)
 	billings.POST("/:id/invoiced", r.billing.MarkInvoiced)
 	billings.POST("/:id/void", r.billing.Void)

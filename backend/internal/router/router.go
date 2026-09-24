@@ -18,25 +18,28 @@ type Router struct {
 	logger  *slog.Logger
 	limiter *middleware.RateLimiter
 
-	user     *handler.UserHandler
-	client   *handler.ClientHandler
-	caseH    *handler.CaseHandler
-	document *handler.DocumentHandler
-	billing  *handler.BillingHandler
-	upload   *handler.UploadHandler
-	auditLog *handler.AuditLogHandler
+	user      *handler.UserHandler
+	client    *handler.ClientHandler
+	caseH     *handler.CaseHandler
+	document  *handler.DocumentHandler
+	billing   *handler.BillingHandler
+	timeEntry *handler.TimeEntryHandler
+	upload    *handler.UploadHandler
+	auditLog  *handler.AuditLogHandler
 }
 
 // New 构造路由装配器。
 func New(cfg *config.Config, db *gorm.DB, logger *slog.Logger,
 	user *handler.UserHandler, client *handler.ClientHandler, caseH *handler.CaseHandler,
 	document *handler.DocumentHandler, billing *handler.BillingHandler,
+	timeEntry *handler.TimeEntryHandler,
 	upload *handler.UploadHandler, auditLog *handler.AuditLogHandler) *Router {
 	return &Router{
 		cfg: cfg, db: db, logger: logger,
 		limiter: middleware.NewRateLimiter(cfg.RateLimitPerMinute),
 		user:    user, client: client, caseH: caseH,
-		document: document, billing: billing, upload: upload, auditLog: auditLog,
+		document: document, billing: billing, timeEntry: timeEntry,
+		upload: upload, auditLog: auditLog,
 	}
 }
 
@@ -64,6 +67,7 @@ func (r *Router) Setup() *gin.Engine {
 	r.registerCaseRoutes(v1)
 	r.registerDocumentRoutes(v1)
 	r.registerBillingRoutes(v1)
+	r.registerTimeEntryRoutes(v1)
 	r.registerAuditLogRoutes(v1)
 	r.registerUploadRoutes(v1)
 	return engine

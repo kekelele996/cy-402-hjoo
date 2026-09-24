@@ -63,7 +63,7 @@ cy-402/
 │   ├── cmd/server/main.go
 │   └── internal/
 │       ├── config/
-│       ├── model/                 # user/client/case/document/billing/audit_log
+│       ├── model/                 # user/client/case/document/billing/time_entry/audit_log
 │       ├── repository/            # 按实体分文件
 │       ├── service/               # 业务逻辑 + 种子数据 + 单元测试
 │       ├── handler/               # HTTP 处理器（含 upload_handler、audit_log_handler）
@@ -74,14 +74,14 @@ cy-402/
 │       └── util/                  # jwt/logger/formatters/amount_formatter/app_error/file_upload
 └── frontend/
     └── src/
-        ├── api/                   # auth/user/client/case/document/billing/auditLog/upload
-        ├── stores/                # authStore/userStore/clientStore/caseStore/documentStore/billingStore
+        ├── api/                   # auth/user/client/case/document/billing/timeEntry/auditLog/upload
+        ├── stores/                # authStore/userStore/clientStore/caseStore/documentStore/billingStore/timeEntryStore
         ├── types/
-        ├── components/common/     # CaseCard/DocumentList/StatusBadge/TimelineItem/AmountSummary/ClientCard/CaseTable/BillingCard/DocumentCard/FileUploader/FilterBar/AvatarUploader/PermissionGuard
+        ├── components/common/     # CaseCard/DocumentList/StatusBadge/TimelineItem/AmountSummary/ClientCard/CaseTable/BillingCard/BillingSources/TimeEntryList/DocumentCard/FileUploader/FilterBar/AvatarUploader/PermissionGuard
         ├── hooks/                 # useAuth/usePagination/useFileUpload/usePermission
         ├── pages/                 # Cases/CaseDetail/Clients/Billing/Documents/Profile/AuditLogs/Login
         ├── router/                # index.tsx + guards.tsx
-        ├── utils/                 # dateFormat/amountFormatter/request
+        ├── utils/                 # dateFormat/amountFormatter/durationFormat/request
         └── constants/             # case/billing/document/errorCodes
 ```
 
@@ -148,12 +148,19 @@ cy-402/
 | PUT | /api/v1/cases/:id | 更新案件 |
 | POST | /api/v1/cases/:id/status | 案件状态流转 |
 | POST | /api/v1/cases/:id/assign | 分配主办律师 |
+| GET | /api/v1/cases/:id/time-entries | 查询案件工时（status=unbilled/billed 可过滤） |
+| POST | /api/v1/cases/:id/time-entries | 承办律师登记工时（日期、时长、工作内容、当时费率） |
+| GET | /api/v1/cases/:id/time-summary | 案件待收费时长（分钟/小时）与预计金额 |
+| PUT | /api/v1/time-entries/:id | 修改未结算工时 |
+| DELETE | /api/v1/time-entries/:id | 删除未结算工时 |
+| GET | /api/v1/time-entries/by-billing/:id | 查询收费单的收费来源工时（账单页展开） |
 | GET | /api/v1/documents | 文档中心分页列表 |
 | POST | /api/v1/documents | 上传文档记录 |
 | GET | /api/v1/documents/by-case/:id | 按案件查询文档 |
 | DELETE | /api/v1/documents/:id | 删除文档 |
 | GET | /api/v1/billings | 账单分页列表 |
-| POST | /api/v1/billings | 创建账单 |
+| POST | /api/v1/billings | 创建账单（手工） |
+| POST | /api/v1/billings/invoice-from-time | 为案件汇总未收费工时生成收费单（事务，失败工时不占用） |
 | GET | /api/v1/billings/summary | 本月应收/已收/待收汇总 |
 | GET | /api/v1/billings/by-case/:id | 按案件查询账单 |
 | POST | /api/v1/billings/:id/paid | 标记支付 |
@@ -162,12 +169,21 @@ cy-402/
 | GET | /api/v1/audit-logs | 审计日志（仅管理员） |
 | POST | /api/v1/upload/file | 文件上传 |
 
+## 工时与收费单的一致性设计
+
+- **费率快照**：每条工时保存登记时的 `hourly_rate`；律师在个人中心调整当前费率后，仅影响之后新登记的工时，旧工时金额不变。
+- **原子生成收费单**：`POST /billings/invoice-from-time` 在单个数据库事务内执行——锁定案件行、`SELECT ... FOR UPDATE` 锁定该案件所有 `billing_id IS NULL` 的工时、按快照费率合计金额、创建 pending 律师费账单并回写工时 `billing_id`。任何一步失败整体回滚，**工时仍留在待结算列表**，不会被部分占用。
+- **一项工时只进入一张有效收费单**：未作废（pending/paid/invoiced）的收费单独占其工时；重复汇总会因没有未收费工时返回 422。
+- **作废即释放**：作废工时来源收费单时，同事务把其工时 `billing_id` 置空，工时回到待结算列表，可重新生成下一张收费单。
+- **待结算汇总**：案件详情展示待收费时长与预计金额（`SUM(时长/60 × 当时费率)`，仅统计 `billing_id IS NULL`）；账单页每行可展开查看构成金额的工时来源。
+
 ## 主要功能
 
 - 客户管理：新建/编辑/检索客户，查看历史案件。
 - 案件管理：创建案件、状态流转（立案→调查→庭审→结案→归档）、律师分配、筛选查询。
 - 文档归档：按案件上传/查看/删除文档（起诉状/答辩状/证据/判决书/合同等）。
 - 费用结算：创建账单、标记支付、开票、作废，本月应收/已收/待收汇总。
+- 工时与收费单：承办律师按案件登记工时（日期、时长、工作内容、当时费率快照），费率后续调整不影响旧工时；一键汇总案件未收费工时生成律师费收费单（事务保证失败工时仍留在待结算列表、一项工时只进入一张有效收费单）；案件详情展示待收费时长与预计金额，账单页可展开查看收费来源，作废收费单自动把工时退回待结算。
 - 审计日志：写操作自动记录（管理员查看）。
 - 角色权限：JWT + RBAC（admin/lawyer/assistant）。
 

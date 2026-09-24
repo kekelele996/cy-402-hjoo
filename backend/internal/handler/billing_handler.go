@@ -127,6 +127,21 @@ func (h *BillingHandler) Summary(c *gin.Context) {
 	OK(c, sum)
 }
 
+// GenerateInvoice 为案件汇总未收费工时生成收费单。
+func (h *BillingHandler) GenerateInvoice(c *gin.Context) {
+	var req dto.InvoiceGenerateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		Fail(c, http.StatusBadRequest, constants.CodeBadRequest, "Billing invoice generate: "+err.Error())
+		return
+	}
+	b, err := h.svc.GenerateInvoiceFromTimeEntries(req.CaseID, req.InvoiceInfo)
+	if err != nil {
+		h.wrapError(c, err, "Billing[case_id="+strconv.FormatUint(req.CaseID, 10)+"] invoice generate failed")
+		return
+	}
+	OKWithMessage(c, constants.MsgInvoiceGenerated, b)
+}
+
 func (h *BillingHandler) wrapError(c *gin.Context, err error, ctx string) {
 	var appErr *util.AppError
 	if errors.As(err, &appErr) {

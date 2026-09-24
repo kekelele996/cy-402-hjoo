@@ -73,7 +73,7 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		Fail(c, http.StatusBadRequest, constants.CodeBadRequest, "User profile update: "+err.Error())
 		return
 	}
-	u, err := h.svc.UpdateProfile(middleware.GetUserID(c), req.RealName, req.Avatar, req.Email, req.Phone, req.LicenseNo)
+	u, err := h.svc.UpdateProfile(middleware.GetUserID(c), req.RealName, req.Avatar, req.Email, req.Phone, req.LicenseNo, req.HourlyRate)
 	if err != nil {
 		h.wrapError(c, err, "User profile update failed")
 		return

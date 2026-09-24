@@ -68,6 +68,18 @@ func (r *UserRepository) Update(u *model.User) error {
 	return nil
 }
 
+// UpdateHourlyRate 更新律师当前每小时费率；只影响之后新登记工时的默认费率。
+func (r *UserRepository) UpdateHourlyRate(id uint64, rate float64) error {
+	res := r.db.Model(&model.User{}).Where("id = ?", id).Update("hourly_rate", rate)
+	if res.Error != nil {
+		return fmt.Errorf("update user hourly rate: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 // List 分页查询用户。
 func (r *UserRepository) List(page, pageSize int) ([]model.User, int64, error) {
 	var list []model.User

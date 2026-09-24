@@ -27,3 +27,8 @@ export function voidBilling(id: number) {
 export function getBillingSummary() {
   return request.get('/billings/summary')
 }
+
+// 为案件汇总全部未收费工时生成一张收费单。
+export function generateInvoiceFromTime(caseId: number, invoiceInfo?: string) {
+  return request.post('/billings/invoice-from-time', { case_id: caseId, invoice_info: invoiceInfo || '' })
+}
